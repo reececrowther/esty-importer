@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+/* Use class-based dark mode so our header toggle controls it, not OS preference */
+@custom-variant dark (&&:where(.dark, .dark *));
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+
+/* Default text: dark in light mode, light in dark mode (high specificity so it wins) */
+html:not(.dark) body {
+  color: #111827 !important;
+}
+.dark body {
+  color: #f3f4f6 !important;
+}
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+.dark {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 17, 24, 39;
+  --background-end-rgb: 17, 24, 39;
+}
+
+/* Keep form controls readable in dark mode - avoid white text on white dropdown */
+select,
+select option {
+  background-color: #fff;
+  color: #111827;
+}
