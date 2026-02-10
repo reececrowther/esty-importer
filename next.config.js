@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Keep serverless functions under 250 MB: load these from node_modules at runtime instead of bundling
+  serverExternalPackages: [
+    'sharp',
+    'ag-psd',
+    'canvas',
+    '@prisma/client',
+  ],
   // Enable file uploads
   experimental: {
     serverActions: {
