@@ -45,8 +45,12 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
     titleRef.current?.focus({ preventScroll: true });
   }, [isOpen, resetForm]);
 
+  // Restore scroll when modal closes so we never leave body locked
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      document.body.style.overflow = '';
+      return;
+    }
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') handleClose();
     };
@@ -57,6 +61,13 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       document.body.style.overflow = '';
     };
   }, [isOpen, handleClose]);
+
+  // Safety: always restore body overflow on unmount (e.g. navigation while modal open)
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
 
   useEffect(() => {
     if (status !== 'success') return;
@@ -98,6 +109,7 @@ export default function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
   return (
     <div
       ref={overlayRef}
+      data-feedback-modal="overlay"
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"

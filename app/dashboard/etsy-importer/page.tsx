@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import FileUpload from '@/components/ui/FileUpload';
 import CustomMockupEngine from '@/components/mockupEngine/CustomMockupEngine';
+import PhotopeaContainer from '@/components/photopea/PhotopeaContainer';
 import MockupGallery from '@/components/ui/MockupGallery';
 import ListingGenerator, { type ListingGeneratorRef } from '@/components/ui/ListingGenerator';
 import { DesignImage, MockupPSD, MockupResult } from '@/types';
@@ -27,6 +28,9 @@ const IMAGE_FIT_OPTIONS = [
   { value: 'cover', label: 'Fill frame (may crop design)' },
   { value: 'contain', label: 'Fit inside frame (no overflow)' },
 ];
+
+// Use Photopea (in-browser) when server-side canvas is unavailable (e.g. Vercel). Set in Vercel: NEXT_PUBLIC_MOCKUP_ENGINE=photopea
+const USE_PHOTOPEA_MOCKUPS = process.env.NEXT_PUBLIC_MOCKUP_ENGINE === 'photopea';
 
 /** MVP: 5-step linear flow. Step indices 1–5. */
 const WIZARD_STEPS = [
@@ -336,20 +340,28 @@ export default function EtsyImporterPage() {
             {isProcessing && designImage && effectiveMockupPSDs.length > 0 && (
               <section className="mb-8 space-y-4">
                 <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Generating mockups</h2>
-                <CustomMockupEngine
-                  designImage={designImage}
-                  mockupPSDs={effectiveMockupPSDs}
-                  onComplete={handleMockupComplete}
-                  options={{
-                    smartObjectLayerNames: customSmartObjectLayerName.trim()
-                      ? [customSmartObjectLayerName.trim()]
-                      : ['YOUR DESIGN HERE', 'Design Here', 'Design'],
-                    exportFormat: 'jpg',
-                    exportQuality: 90,
-                    exportDpi,
-                    imageFit,
-                  }}
-                />
+                {USE_PHOTOPEA_MOCKUPS ? (
+                  <PhotopeaContainer
+                    designImage={designImage}
+                    mockupPSDs={effectiveMockupPSDs}
+                    onComplete={handleMockupComplete}
+                  />
+                ) : (
+                  <CustomMockupEngine
+                    designImage={designImage}
+                    mockupPSDs={effectiveMockupPSDs}
+                    onComplete={handleMockupComplete}
+                    options={{
+                      smartObjectLayerNames: customSmartObjectLayerName.trim()
+                        ? [customSmartObjectLayerName.trim()]
+                        : ['YOUR DESIGN HERE', 'Design Here', 'Design'],
+                      exportFormat: 'jpg',
+                      exportQuality: 90,
+                      exportDpi,
+                      imageFit,
+                    }}
+                  />
+                )}
               </section>
             )}
 
@@ -416,7 +428,11 @@ export default function EtsyImporterPage() {
               {isProcessing && designImage && mockupPSDs.length > 0 && (
                 <div className="space-y-4">
                   <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">Processing Mockups</h2>
-                  <CustomMockupEngine designImage={designImage} mockupPSDs={mockupPSDs} onComplete={handleMockupComplete} options={{ smartObjectLayerNames: customSmartObjectLayerName.trim() ? [customSmartObjectLayerName.trim()] : ['YOUR DESIGN HERE', 'Design Here', 'Design'], exportFormat: 'jpg', exportQuality: 90, exportDpi, imageFit }} />
+                  {USE_PHOTOPEA_MOCKUPS ? (
+                    <PhotopeaContainer designImage={designImage} mockupPSDs={mockupPSDs} onComplete={handleMockupComplete} />
+                  ) : (
+                    <CustomMockupEngine designImage={designImage} mockupPSDs={mockupPSDs} onComplete={handleMockupComplete} options={{ smartObjectLayerNames: customSmartObjectLayerName.trim() ? [customSmartObjectLayerName.trim()] : ['YOUR DESIGN HERE', 'Design Here', 'Design'], exportFormat: 'jpg', exportQuality: 90, exportDpi, imageFit }} />
+                  )}
                 </div>
               )}
             </div>

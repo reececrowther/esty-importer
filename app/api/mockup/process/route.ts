@@ -15,10 +15,10 @@ let canvasInitialized = false;
 
 function ensureCanvasInitialized() {
   if (canvasInitialized) return;
-  
+
   try {
-    // Manual initialization with node-canvas
-    // Use require for node-canvas since it's a CommonJS module
+    // node-canvas is optional (optionalDependencies) — not available on Vercel; use Photopea in-browser
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const canvasModule = require('canvas');
     const { createCanvas } = canvasModule;
     

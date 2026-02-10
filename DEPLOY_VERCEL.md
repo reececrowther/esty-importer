@@ -81,6 +81,7 @@ In the project: **Settings** → **Environment Variables**. Add these for **Prod
 | `NEXT_PUBLIC_APP_URL` | Same as `NEXTAUTH_URL` |
 | `STORAGE_TYPE` | `vercel_blob` |
 | `BLOB_READ_WRITE_TOKEN` | Set automatically if you created the Blob store in the same project; otherwise paste from Storage → your Blob store |
+| `NEXT_PUBLIC_MOCKUP_ENGINE` | `photopea` — so mockups use the in-browser Photopea editor (no server-side canvas). **Required for mockups on Vercel.** |
 | `OPENROUTER_API_KEY` or `OPENAI_API_KEY` | Your AI API key (for listing generation) |
 | `ETSY_API_KEY` | Etsy app API key (optional for demo) |
 | `ETSY_SHARED_SECRET` | Etsy app secret (optional) |
@@ -122,6 +123,7 @@ Use your real Vercel URL instead of `your-app.vercel.app`.
 - [ ] `STORAGE_TYPE=vercel_blob` in Vercel
 - [ ] `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL` set in Vercel
 - [ ] AI API key set (`OPENROUTER_API_KEY` or `OPENAI_API_KEY`)
+- [ ] `NEXT_PUBLIC_MOCKUP_ENGINE=photopea` set in Vercel (so mockup generator works without canvas)
 - [ ] Redeploy after env changes; DB schema applied (`prisma db push` or migration)
 
 Your live demo URL is the Vercel deployment URL (e.g. `https://your-app.vercel.app`).
