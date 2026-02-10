@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+  <rect width="40" height="40" rx="8" fill="url(#bg)"/>
+  <!-- Simple paper plane: nose left, wings right -->
+  <path d="M12 20L28 12L28 28L12 20z" fill="url(#plane)"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stopColor="#2563eb"/>
+      <stop offset="1" stopColor="#1e40af"/>
+    </linearGradient>
+    <linearGradient id="plane" x1="12" y1="12" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stopColor="#ffffff"/>
+      <stop offset="1" stopColor="#c7d2fe"/>
+    </linearGradient>
+  </defs>
+</svg>

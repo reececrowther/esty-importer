@@ -29,6 +29,7 @@ export default function CustomMockupEngine({
     exportFormat = 'jpg',
     exportQuality = 90,
     exportDpi,
+    imageFit = 'cover',
   } = options;
 
   // Get full URLs for files
@@ -106,6 +107,7 @@ export default function CustomMockupEngine({
           exportFormat,
           exportQuality,
           exportDpi,
+          imageFit,
         }),
       });
 
@@ -123,9 +125,30 @@ export default function CustomMockupEngine({
           errorDetails = errorData;
           console.error('API error details:', errorData);
           
-          // If it's a specific error we can't recover from, throw it
-          if (errorData.error === 'Canvas initialization failed' || 
-              errorData.error === 'Failed to parse PSD file' ||
+          // Free tier limit exceeded
+          if (response.status === 403 && errorData.error === 'limit_exceeded') {
+            setStatus('Free tier limit reached');
+            alert(
+              (errorData.message || `Limit reached: ${errorData.used}/${errorData.limit} mockups this month.`) +
+              '\n\nUpgrade to Plus in Settings for unlimited mockups.'
+            );
+            throw new Error(errorData.message || 'Limit exceeded');
+          }
+
+          // Canvas unavailable: show clear instructions instead of broken client fallback
+          if (errorData.error === 'canvas_unavailable' || errorData.error === 'Canvas initialization failed') {
+            const hint = errorData.hint || 'Use Node 18 (nvm use 18, then npm install) or use the Photopea editor for mockups.';
+            setStatus('Server mockup processing unavailable');
+            alert(
+              'Server-side mockup processing is not available.\n\n' +
+              hint + '\n\n' +
+              'Quick fix: In the project folder run:\n  nvm use 18\n  Remove-Item -Recurse -Force node_modules\n  npm install\n  npm run dev'
+            );
+            throw new Error(`Canvas unavailable: ${hint}`);
+          }
+          
+          // Other unrecoverable errors
+          if (errorData.error === 'Failed to parse PSD file' ||
               errorData.error === 'Smart Object layer not found') {
             const fullMessage = errorMessage + 
               (errorData.availableLayers ? `\nAvailable layers: ${errorData.availableLayers.slice(0, 5).join(', ')}` : '');
@@ -166,7 +189,11 @@ export default function CustomMockupEngine({
         exportedImageUrl: getFileUrl(result.exportedImagePath),
       };
     } catch (apiError) {
-      // If API fails, fall back to client-side processing
+      const msg = apiError instanceof Error ? apiError.message : String(apiError);
+      // Don't fall back when canvas is unavailable; client-side can't do PSD processing
+      if (msg.includes('Canvas unavailable') || msg.includes('canvas_unavailable')) {
+        throw apiError;
+      }
       console.warn('API processing failed, falling back to client-side:', apiError);
       return await processClientSide(designImage, mockupPSD, designImageUrl, mockupPSDUrl);
     }

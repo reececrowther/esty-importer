@@ -1,44 +1,44 @@
 // app/api/mockup/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import formidable from "formidable";
 import path from "path";
 import fs from "fs";
 import { generateMockup } from "@/services/mockupEngine";
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
 export async function POST(req: NextRequest) {
-  const form = new formidable.IncomingForm({ multiples: true });
-
-  const data: any = await new Promise((resolve, reject) => {
-    form.parse(req as any, (err, fields, files) => {
-      if (err) reject(err);
-      else resolve({ fields, files });
-    });
-  });
-
   try {
-    const mockupName = data.fields.mockupName;
-    const artworkFile = Array.isArray(data.files.artwork)
-      ? data.files.artwork[0]
-      : data.files.artwork;
+    const formData = await req.formData();
+    const mockupName = formData.get("mockupName");
+    const artwork = formData.get("artwork");
 
-    if (!artworkFile) throw new Error("No artwork file uploaded");
+    if (!mockupName || typeof mockupName !== "string") {
+      return NextResponse.json({ error: "mockupName required" }, { status: 400 });
+    }
+    if (!artwork || !(artwork instanceof File)) {
+      return NextResponse.json({ error: "No artwork file uploaded" }, { status: 400 });
+    }
 
-    const artworkPath = artworkFile.filepath || artworkFile.path;
+    const tmpDir = path.join(process.cwd(), "storage", "uploads");
+    await fs.promises.mkdir(tmpDir, { recursive: true });
+    const tmpPath = path.join(tmpDir, `artwork_${Date.now()}_${artwork.name}`);
+    const bytes = await artwork.arrayBuffer();
+    await fs.promises.writeFile(tmpPath, Buffer.from(bytes));
 
     const outputFileName = `mockup_${Date.now()}.jpg`;
     const outputPath = path.join(process.cwd(), "storage", "exports", outputFileName);
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
 
-    await generateMockup(mockupName, artworkPath, outputPath);
+    await generateMockup(mockupName, tmpPath, outputPath);
+
+    try {
+      await fs.promises.unlink(tmpPath);
+    } catch {
+      // ignore cleanup errors
+    }
 
     return NextResponse.json({ url: `/storage/exports/${outputFileName}` });
-  } catch (err: any) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to generate mockup";
     console.error(err);
-    return NextResponse.json({ error: err.message || "Failed to generate mockup" }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

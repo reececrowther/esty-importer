@@ -347,7 +347,7 @@ export default function PhotopeaContainer({
       `;
 
       try {
-        iframeRef.current.contentWindow.postMessage(scriptCode, '*');
+        iframeRef.current?.contentWindow?.postMessage(scriptCode, '*');
         console.log('Photopea main script injected successfully');
         setStatus('Waiting for Photopea to confirm script is ready...');
         

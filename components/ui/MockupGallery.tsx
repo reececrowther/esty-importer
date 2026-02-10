@@ -2,13 +2,47 @@
 
 import { MockupResult } from '@/types';
 import { useState } from 'react';
+import JSZip from 'jszip';
 
 interface MockupGalleryProps {
   mockups: MockupResult[];
+  /** When provided, enables drag-and-drop reorder. First image = main Etsy listing image. */
+  onReorder?: (ordered: MockupResult[]) => void;
 }
 
-export default function MockupGallery({ mockups }: MockupGalleryProps) {
+function safeFileName(name: string): string {
+  return name.replace(/\.psd$/i, '').replace(/[^\w.-]/g, '_') || 'mockup';
+}
+
+export default function MockupGallery({ mockups, onReorder }: MockupGalleryProps) {
   const [selectedMockup, setSelectedMockup] = useState<MockupResult | null>(null);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    setDraggedIndex(null);
+    if (onReorder == null || draggedIndex === null || draggedIndex === dropIndex) return;
+    const newOrder = [...mockups];
+    const [removed] = newOrder.splice(draggedIndex, 1);
+    newOrder.splice(dropIndex, 0, removed);
+    onReorder(newOrder);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
 
   const handleDownload = async (mockup: MockupResult) => {
     try {
@@ -17,7 +51,7 @@ export default function MockupGallery({ mockups }: MockupGalleryProps) {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${mockup.mockupName.replace('.psd', '')}.jpg`;
+      a.download = `${safeFileName(mockup.mockupName)}.jpg`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -28,19 +62,85 @@ export default function MockupGallery({ mockups }: MockupGalleryProps) {
     }
   };
 
+  const handleDownloadAllZip = async () => {
+    if (mockups.length === 0) return;
+    setIsDownloadingZip(true);
+    try {
+      const zip = new JSZip();
+      const usedNames = new Set<string>();
+      for (let i = 0; i < mockups.length; i++) {
+        const mockup = mockups[i];
+        const base = safeFileName(mockup.mockupName);
+        let name = `${base}.jpg`;
+        let n = 0;
+        while (usedNames.has(name)) {
+          n += 1;
+          name = `${base}_${n}.jpg`;
+        }
+        usedNames.add(name);
+        const response = await fetch(mockup.exportedImageUrl);
+        const blob = await response.blob();
+        zip.file(name, blob);
+      }
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = window.URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mockups-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Zip download error:', error);
+      alert('Failed to create zip download');
+    } finally {
+      setIsDownloadingZip(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        {onReorder != null && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Drag to reorder. The first image will be the main listing photo on Etsy.
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={handleDownloadAllZip}
+          disabled={isDownloadingZip || mockups.length === 0}
+          className="ml-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium shrink-0"
+        >
+          {isDownloadingZip ? 'Creating zip...' : 'Download all (ZIP)'}
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {mockups.map((mockup) => (
+        {mockups.map((mockup, index) => (
           <div
             key={mockup.mockupId}
-            className="border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer bg-white dark:bg-gray-800"
+            draggable={onReorder != null}
+            onDragStart={(e) => onReorder && handleDragStart(e, index)}
+            onDragOver={onReorder ? handleDragOver : undefined}
+            onDrop={onReorder ? (e) => handleDrop(e, index) : undefined}
+            onDragEnd={onReorder ? handleDragEnd : undefined}
+            className={`border rounded-lg overflow-hidden transition-shadow bg-white dark:bg-gray-800 cursor-pointer ${
+              onReorder ? 'border-gray-300 dark:border-gray-600 hover:shadow-lg' : ''
+            } ${draggedIndex === index ? 'opacity-60 ring-2 ring-blue-500' : ''} ${onReorder ? 'cursor-grab active:cursor-grabbing' : ''}`}
             onClick={() => setSelectedMockup(mockup)}
           >
+            {onReorder != null && (
+              <div className="flex items-center gap-1 px-2 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400">
+                <span className="inline-block w-4 h-4 text-center font-medium text-gray-600 dark:text-gray-300">{index + 1}</span>
+                <span>Drag to reorder</span>
+              </div>
+            )}
             <img
               src={mockup.exportedImageUrl}
               alt={mockup.mockupName}
-              className="w-full h-48 object-cover"
+              className="w-full h-48 object-cover pointer-events-none"
+              draggable={false}
             />
             <div className="p-4">
               <h3 className="font-medium truncate text-gray-900 dark:text-gray-100">{mockup.mockupName}</h3>

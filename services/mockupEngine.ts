@@ -27,13 +27,14 @@ export async function generateMockup(
 
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
-  // Sharp composite layers
-  let compositeLayers = [
+  // Sharp composite layers (blend must be literal type; Sharp OverlayOptions has no opacity)
+  type OverlayEntry = { input: string; top?: number; left?: number; blend?: 'over' | 'multiply' };
+  const compositeLayers: OverlayEntry[] = [
     {
       input: artworkPath,
       top: config.frame.top || 0,
       left: config.frame.left || 0,
-      blend: "over",
+      blend: 'over',
     },
   ];
 
@@ -42,8 +43,7 @@ export async function generateMockup(
     if (fs.existsSync(overlayPath)) {
       compositeLayers.push({
         input: overlayPath,
-        blend: "multiply",
-        opacity: config.opacity || 0.9,
+        blend: 'multiply',
       });
     }
   }

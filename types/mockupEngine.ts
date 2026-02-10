@@ -53,6 +53,14 @@ export interface MockupEngineOptions {
    * Scales output and sets density metadata. Base is 72 if PSD has no resolution.
    */
   exportDpi?: number;
+
+  /**
+   * How the design image fits inside the frame.
+   * - 'contain': Fit entirely inside the frame (no overflow; may add letterboxing).
+   * - 'cover': Fill the entire frame (may crop design if aspect ratios differ).
+   * Default 'contain' avoids overflow; use 'cover' for a full-bleed look.
+   */
+  imageFit?: 'contain' | 'cover';
   
   /**
    * Additional engine-specific options

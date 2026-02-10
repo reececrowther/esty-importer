@@ -38,3 +38,10 @@ next-env.d.ts
 # uploads (local storage)
 /uploads
 /public/uploads
+
+# feedback MVP storage
+/data
+
+# Prisma (local SQLite)
+/prisma/*.db
+/prisma/*.db-journal

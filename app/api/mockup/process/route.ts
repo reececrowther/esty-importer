@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import path from 'path';
+import fs from 'fs/promises';
+import { authOptions } from '@/lib/auth';
 import { storage } from '@/lib/storage';
+import { isPackPath, getPackRelativePath } from '@/lib/mockupPacks';
 import { readPsd, initializeCanvas } from 'ag-psd';
 import sharp from 'sharp';
+import { checkMockupLimit, incrementMockupUsage } from '@/lib/tiers';
 
 // Initialize canvas for Node.js - must be done before reading PSD files
 // This ensures node-canvas is properly set up for ag-psd
@@ -137,7 +143,7 @@ async function applyMaskToDesign(
   const designPixels = designRaw.data;
   const designChannels = designRaw.info.channels ?? 4;
 
-  // Resize mask to design dimensions if needed
+  // Resize mask to exactly design dimensions (1:1 pixel match) to avoid edge bands/artifacts
   let maskPixels: Buffer;
   if (maskWidth === designWidth && maskHeight === designHeight) {
     maskPixels = maskBuffer;
@@ -278,8 +284,8 @@ async function fallbackCompositeMethod(
   const psdWidth = mockupMetadata.width || psd.width || 2000;
   const psdHeight = mockupMetadata.height || psd.height || 2000;
   
-  const compositeLeft = Math.max(0, Math.min(Math.round(bounds.left), psdWidth - 1));
-  const compositeTop = Math.max(0, Math.min(Math.round(bounds.top), psdHeight - 1));
+  const compositeLeft = Math.max(0, Math.min(bounds.left, psdWidth - 1));
+  const compositeTop = Math.max(0, Math.min(bounds.top, psdHeight - 1));
   const actualDesignWidth = Math.min(finalWidth, psdWidth - compositeLeft);
   const actualDesignHeight = Math.min(finalHeight, psdHeight - compositeTop);
   
@@ -289,6 +295,7 @@ async function fallbackCompositeMethod(
       .resize(actualDesignWidth, actualDesignHeight, {
         fit: 'cover',
         position: 'center',
+        kernel: 'cubic',
       })
       .toBuffer();
   }
@@ -316,6 +323,24 @@ async function fallbackCompositeMethod(
  */
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const limitCheck = await checkMockupLimit(session.user.id);
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: 'limit_exceeded',
+          message: `Free tier limit reached: ${limitCheck.used}/${limitCheck.limit} mockups this month. Upgrade to Plus for unlimited mockups.`,
+          used: limitCheck.used,
+          limit: limitCheck.limit,
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const {
       designImagePath,
@@ -324,6 +349,7 @@ export async function POST(request: NextRequest) {
       exportFormat = 'jpg',
       exportQuality = 90,
       exportDpi,
+      imageFit = 'cover', // 'cover' = fill frame (default); 'contain' = fit inside frame (no overflow)
     } = body;
 
     if (!designImagePath || !mockupPSDPath) {
@@ -352,8 +378,15 @@ export async function POST(request: NextRequest) {
     }
     
     try {
-      mockupPSDBuffer = await storage.read(mockupPSDPath);
-      console.log('PSD file read, size:', mockupPSDBuffer.length);
+      if (isPackPath(mockupPSDPath)) {
+        const relativePath = getPackRelativePath(mockupPSDPath);
+        const fullPath = path.join(process.cwd(), 'public', 'mockup-packs', relativePath);
+        mockupPSDBuffer = await fs.readFile(fullPath);
+        console.log('Pack PSD file read, size:', mockupPSDBuffer.length);
+      } else {
+        mockupPSDBuffer = await storage.read(mockupPSDPath);
+        console.log('PSD file read, size:', mockupPSDBuffer.length);
+      }
     } catch (readError) {
       console.error('Failed to read PSD file:', readError);
       return NextResponse.json(
@@ -370,13 +403,14 @@ export async function POST(request: NextRequest) {
       ensureCanvasInitialized();
     } catch (initError) {
       console.error('Canvas initialization error:', initError);
+      const msg = initError instanceof Error ? initError.message : 'Unknown initialization error';
       return NextResponse.json(
         { 
-          error: 'Canvas initialization failed',
-          message: initError instanceof Error ? initError.message : 'Unknown initialization error',
-          hint: 'Make sure the "canvas" package is installed: npm install canvas',
+          error: 'canvas_unavailable',
+          message: msg,
+          hint: 'Server-side mockup processing needs the "canvas" package built for your Node version. Use Node 18 (nvm use 18, then reinstall), or use the in-browser Photopea editor for mockups.',
         },
-        { status: 500 }
+        { status: 503 }
       );
     }
 
@@ -478,10 +512,19 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    // Normalize bounds to integer pixels for pixel-perfect placement (avoids sub-pixel drift)
+    const rawWidth = bounds.right - bounds.left;
+    const rawHeight = bounds.bottom - bounds.top;
+    bounds = {
+      left: Math.round(bounds.left),
+      top: Math.round(bounds.top),
+      right: Math.round(bounds.left) + Math.round(rawWidth),
+      bottom: Math.round(bounds.top) + Math.round(rawHeight),
+    };
     const smartObjectWidth = bounds.right - bounds.left;
     const smartObjectHeight = bounds.bottom - bounds.top;
 
-    console.log('Calculated bounds:', bounds);
+    console.log('Calculated bounds (pixel-normalized):', bounds);
     console.log('Smart Object dimensions:', smartObjectWidth, 'x', smartObjectHeight);
 
     if (smartObjectWidth <= 0 || smartObjectHeight <= 0) {
@@ -538,15 +581,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. Process design image to fit Smart Object bounds exactly
-    // Use 'cover' to fill the entire Smart Object area, or 'contain' to fit within it
-    let processedDesign = await sharp(designImageBuffer)
-      .resize(finalWidth, finalHeight, {
-        fit: 'cover', // Fill the entire Smart Object area
-        position: 'center',
+    // Resize with aspect ratio preserved (cover/contain only - never 'fill') to avoid edge distortion
+    const resizeOptions = { position: 'center' as const, kernel: 'cubic' as const };
+
+    // 6. Process design image to fit Smart Object bounds exactly (finalWidth x finalHeight)
+    // 'cover' = fill frame (may crop); 'contain' = fit inside (may letterbox). Both preserve aspect ratio.
+    let processedDesign: Buffer;
+    if (imageFit === 'contain') {
+      // Resize design to fit inside bounds, then center on a canvas of exact bounds size.
+      // Use off-white padding (not transparent) so JPG export doesn't turn letterbox into black bars.
+      const fittedBuffer = await sharp(designImageBuffer)
+        .resize(finalWidth, finalHeight, { fit: 'contain', ...resizeOptions })
+        .ensureAlpha()
+        .png()
+        .toBuffer();
+      const fittedMeta = await sharp(fittedBuffer).metadata();
+      const w = fittedMeta.width ?? 0;
+      const h = fittedMeta.height ?? 0;
+      const left = Math.round((finalWidth - w) / 2);
+      const top = Math.round((finalHeight - h) / 2);
+      processedDesign = await sharp({
+        create: {
+          width: finalWidth,
+          height: finalHeight,
+          channels: 4,
+          background: { r: 252, g: 252, b: 252, alpha: 1 },
+        },
       })
-      .ensureAlpha() // Ensure transparency is preserved if needed
-      .toBuffer();
+        .composite([{ input: fittedBuffer, left, top, blend: 'over' }])
+        .png()
+        .toBuffer();
+    } else {
+      processedDesign = await sharp(designImageBuffer)
+        .resize(finalWidth, finalHeight, {
+          fit: 'cover',
+          ...resizeOptions,
+        })
+        .ensureAlpha()
+        .toBuffer();
+    }
     
     // 6b. Apply layer mask to design if the Smart Object layer has a mask
     // ag-psd reads mask data; we apply it so masked mockups render correctly
@@ -664,13 +737,13 @@ export async function POST(request: NextRequest) {
       console.log('Composite position:', compositeLeft, compositeTop);
       console.log('Actual design size:', actualDesignWidth, 'x', actualDesignHeight);
       
-      // If design needs to be resized to fit, do it
+      // If design extends past canvas, scale down to visible area (preserve fit behavior)
       let designToComposite = processedDesign;
       if (actualDesignWidth !== finalWidth || actualDesignHeight !== finalHeight) {
         designToComposite = await sharp(processedDesign)
           .resize(actualDesignWidth, actualDesignHeight, {
-            fit: 'cover',
-            position: 'center',
+            fit: imageFit === 'contain' ? 'contain' : 'cover',
+            ...resizeOptions,
           })
           .toBuffer();
       }
@@ -761,15 +834,19 @@ export async function POST(request: NextRequest) {
     // Optional: delete source files after successful mockup (saves disk space)
     // Set CLEANUP_SOURCE_AFTER_MOCKUP=true if you don't need to reuse the same design/PSD.
     // Leave unset/false if you use one design with multiple PSDs in the same session.
+    // Never delete pack mockups (they live in public/mockup-packs).
     if (process.env.CLEANUP_SOURCE_AFTER_MOCKUP === 'true') {
       await storage.delete(designImagePath).catch(() => {});
-      await storage.delete(mockupPSDPath).catch(() => {});
+      if (!isPackPath(mockupPSDPath)) {
+        await storage.delete(mockupPSDPath).catch(() => {});
+      }
     }
 
-    // Log success
+    // Log success and increment usage for free tier
     console.log('Mockup processing completed successfully');
     console.log('Saved to:', savedPath);
-    
+    await incrementMockupUsage(session!.user!.id);
+
     return NextResponse.json({
       exportedImagePath: savedPath,
       debug: {

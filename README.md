@@ -1,46 +1,63 @@
-# Esty Importer
+# Etsy Importer
 
-A local-first web application for creating mockups and generating Etsy-optimized listings. Built with Next.js, Photopea integration, and AI-powered content generation.
+A SaaS-style web app for creating mockups and generating Etsy-optimized listings. Built with Next.js, with optional local-first setup for testing. The tool is **only accessible when logged in**; the public homepage explains the product and features.
 
 ## Features
 
+- **Account-gated dashboard** — Sign up / log in to use the mockup and listing tools
+- **Public homepage** — One-page marketing site (product overview, features, FAQ)
 - Upload design images and PSD mockup files
-- Automatically place designs into mockups using Photopea
-- Export finished mockup images
+- Automatically place designs into mockups (custom engine)
+- Export finished mockup images (72–300 DPI)
 - Generate Etsy-optimized content (title, description, SEO tags) using AI
-- Optional Etsy API integration (stubbed for MVP)
+- Etsy shop connection and listing upload (OAuth)
 
 ## Tech Stack
 
 - **Frontend**: Next.js 14 (App Router) + React + TypeScript
 - **Backend**: Next.js API routes / Server Actions
 - **Image Processing**: Photopea (embedded via iframe)
-- **AI**: OpenAI API
+- **AI**: OpenRouter (or direct OpenAI) for listing generation
 - **Storage**: Filesystem (local), abstracted for future S3 migration
 
-## Getting Started
+## Requirements
+
+- **Node.js 18** (LTS). The `canvas` package (used for PSD mockup processing) has pre-built binaries for Node 18. Node 22 is not yet fully supported on Windows.
+- If you use [nvm](https://github.com/nvm-sh/nvm) (or nvm-windows): run `nvm use` in the project root to switch to Node 18 (see `.nvmrc`).
+
+## Getting Started (local SaaS)
 
 1. Install dependencies:
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
 
-2. Copy environment variables:
-```bash
-cp .env.example .env
-```
+2. Copy environment variables (required for auth and DB):
+   ```bash
+   cp .env.example .env
+   ```
+   `.env.example` includes `DATABASE_URL`, `NEXTAUTH_SECRET`, and `NEXTAUTH_URL` for local SaaS.
 
-3. Add your OpenAI API key to `.env`:
-```
-OPENAI_API_KEY=your_key_here
-```
+3. Configure `.env`:
+   - **Database** (required for auth): `DATABASE_URL="file:./dev.db"` (SQLite; already in `.env.example`).
+   - **Auth**: Set `NEXTAUTH_SECRET` (e.g. `openssl rand -base64 32`) and `NEXTAUTH_URL=http://localhost:3000`.
+   - **App**: `NEXT_PUBLIC_APP_URL=http://localhost:3000`.
+   - **AI listings**: Use **OpenRouter** (recommended) — set `OPENROUTER_API_KEY` and optionally `OPENROUTER_MODEL` (e.g. `openai/gpt-4`, `anthropic/claude-3.5-sonnet`). Or use direct **OpenAI**: `OPENAI_API_KEY=your_key_here`.
+   - **Etsy** (optional): Add Etsy API keys if you use shop connection (see `ETSY_SETUP.md`).
 
-4. Run the development server:
-```bash
-npm run dev
-```
+4. Create the database and seed a demo user (optional):
+   ```bash
+   npx prisma db push
+   npm run db:seed
+   ```
+   Default seed user: `demo@example.com` / `demo12345`. Override with `SEED_USER_EMAIL` and `SEED_USER_PASSWORD`.
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+5. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+6. Open [http://localhost:3000](http://localhost:3000). Use the homepage to learn about the product; **Log in** or **Sign up** to access the **Dashboard** (mockup generator and listing tools).
 
 ## Project Structure
 
@@ -67,7 +84,7 @@ npm run dev
 The application follows a modular service architecture:
 
 - **mockupService**: Handles PSD loading, Photopea operations, and image export
-- **aiListingService**: Generates Etsy-optimized content using OpenAI
+- **aiListingService**: Generates Etsy-optimized content using OpenRouter or OpenAI
 - **etsyService**: Manages Etsy API interactions (stubbed for MVP)
 
 All services are designed to be easily migrated to a multi-user SaaS architecture with:

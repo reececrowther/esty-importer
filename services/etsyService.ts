@@ -1,8 +1,8 @@
 /**
  * Etsy Service
- * 
+ *
  * Handles Etsy API integration for uploading listings.
- * 
+ *
  * For SaaS scaling:
  * - Store OAuth tokens per user
  * - Handle token refresh
@@ -13,119 +13,136 @@
 
 import { EtsyListing } from '@/types';
 
-// Etsy API v3 endpoints
 const ETSY_API_BASE = 'https://api.etsy.com/v3';
-const ETSY_SHOP_ID = process.env.ETSY_SHOP_ID;
 const ETSY_API_KEY = process.env.ETSY_API_KEY;
+const ETSY_SHARED_SECRET = process.env.ETSY_SHARED_SECRET;
+
+function getApiKeyHeader(): string {
+  if (ETSY_SHARED_SECRET) {
+    return `${ETSY_API_KEY}:${ETSY_SHARED_SECRET}`;
+  }
+  return ETSY_API_KEY ?? '';
+}
 
 export interface EtsyUploadOptions {
   listing: EtsyListing;
-  accessToken?: string; // OAuth token (required for real uploads)
+  accessToken?: string;
+  shopId: number;
+  /** If true, listing goes live immediately; otherwise saved as draft */
+  publish?: boolean;
 }
 
 /**
- * Upload a listing to Etsy
- * 
- * Currently stubbed for MVP. In production:
- * - Requires OAuth 2.0 authentication
- * - Creates listing via POST /application/shops/{shop_id}/listings
- * - Uploads images via POST /application/shops/{shop_id}/listings/{listing_id}/images
- * - Handles rate limits and retries
+ * Upload a listing to Etsy: create draft, upload images, then optionally publish.
+ * accessToken is required for real uploads; without it returns a stub response.
  */
 export async function uploadListingToEtsy(
   options: EtsyUploadOptions
 ): Promise<{ listingId: string; url: string }> {
-  const { listing, accessToken } = options;
+  const { listing, accessToken, shopId, publish = false } = options;
 
   if (!accessToken) {
-    // Stub for MVP - return mock response
     console.log('[STUB] Would upload listing to Etsy:', {
       title: listing.title,
       imageCount: listing.images.length,
     });
-
     return {
       listingId: `stub-${Date.now()}`,
       url: `https://etsy.com/listing/stub-${Date.now()}`,
     };
   }
 
-  // Real implementation would:
-  // 1. Create listing draft
-  // 2. Upload images
-  // 3. Publish listing
-  // 4. Return listing ID and URL
-
-  try {
-    // Example API call structure (not implemented):
-    /*
-    const listingResponse = await fetch(
-      `${ETSY_API_BASE}/application/shops/${ETSY_SHOP_ID}/listings`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: listing.title,
-          description: listing.description,
-          tags: listing.tags,
-          price: listing.price,
-          quantity: listing.quantity,
-          type: 'physical', // or 'digital'
-          state: 'draft', // or 'active'
-        }),
-      }
-    );
-
-    const listingData = await listingResponse.json();
-    const listingId = listingData.listing_id;
-
-    // Upload images
-    for (const imageUrl of listing.images) {
-      await uploadImageToEtsy(listingId, imageUrl, accessToken);
-    }
-
-    return {
-      listingId,
-      url: `https://etsy.com/listing/${listingId}`,
-    };
-    */
-
-    throw new Error('Etsy upload not fully implemented - requires OAuth setup');
-  } catch (error) {
-    console.error('Error uploading to Etsy:', error);
-    throw new Error('Failed to upload listing to Etsy');
+  const apiKey = getApiKeyHeader();
+  if (!apiKey) {
+    throw new Error('Etsy API key not configured (ETSY_API_KEY)');
   }
+
+  const headers: Record<string, string> = {
+    'x-api-key': apiKey,
+    Authorization: `Bearer ${accessToken}`,
+  };
+
+  // 1. Create listing (draft or active). Etsy requires a price; default 1.00 for draft.
+  const createBody = {
+    title: listing.title.slice(0, 140),
+    description: listing.description,
+    quantity: listing.quantity ?? 1,
+    listing_type: 'physical',
+    state: publish ? 'active' : 'draft',
+    price: (listing.price ?? 0) > 0 ? Number(listing.price) : 1.0,
+    tags: listing.tags?.slice(0, 13) ?? [],
+  };
+
+  const createRes = await fetch(
+    `${ETSY_API_BASE}/application/shops/${shopId}/listings`,
+    {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(createBody),
+    }
+  );
+
+  if (!createRes.ok) {
+    const errText = await createRes.text();
+    console.error('Etsy create listing error:', createRes.status, errText);
+    throw new Error(`Etsy create listing failed: ${createRes.status}`);
+  }
+
+  const listingData = (await createRes.json()) as { listing_id: number };
+  const listingId = String(listingData.listing_id);
+
+  // 2. Upload images (fetch from our URLs and upload to Etsy)
+  for (let i = 0; i < listing.images.length; i++) {
+    const imageUrl = listing.images[i];
+    await uploadImageToEtsy(shopId, listingId, imageUrl, accessToken, headers);
+  }
+
+  const url = `https://www.etsy.com/listing/${listingId}`;
+  return { listingId, url };
 }
 
 /**
- * Upload a single image to an Etsy listing
+ * Fetch image from URL (e.g. our /api/files/...) and upload to Etsy listing.
  */
 async function uploadImageToEtsy(
+  shopId: number,
   listingId: string,
   imageUrl: string,
-  accessToken: string
+  accessToken: string,
+  baseHeaders: Record<string, string>
 ): Promise<void> {
-  // Stub implementation
-  console.log(`[STUB] Would upload image ${imageUrl} to listing ${listingId}`);
-  
-  // Real implementation would:
-  // 1. Fetch image from URL
-  // 2. Convert to required format (JPEG, max 2700px)
-  // 3. POST to /application/shops/{shop_id}/listings/{listing_id}/images
-}
+  const resolvedUrl =
+    imageUrl.startsWith('http') ? imageUrl : `${process.env.NEXT_PUBLIC_APP_URL ?? ''}${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
 
-/**
- * Get OAuth authorization URL
- * 
- * For SaaS: This would be user-specific and stored in session/database
- */
-export function getEtsyAuthUrl(): string {
-  const clientId = ETSY_API_KEY;
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/etsy/callback`;
-  const scopes = ['listings_w', 'listings_r']; // Write and read listings
+  let imageBuffer: ArrayBuffer;
+  try {
+    const res = await fetch(resolvedUrl, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Image fetch failed: ${res.status}`);
+    imageBuffer = await res.arrayBuffer();
+  } catch (e) {
+    console.error('Failed to fetch image for Etsy:', resolvedUrl, e);
+    throw new Error('Failed to load image for upload');
+  }
 
-  return `https://www.etsy.com/oauth/connect?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes.join(' ')}`;
+  const form = new FormData();
+  const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
+  form.append('image', blob, 'image.jpg');
+
+  const uploadRes = await fetch(
+    `${ETSY_API_BASE}/application/shops/${shopId}/listings/${listingId}/images`,
+    {
+      method: 'POST',
+      headers: {
+        'x-api-key': baseHeaders['x-api-key'],
+        Authorization: baseHeaders.Authorization,
+      },
+      body: form,
+    }
+  );
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    console.error('Etsy image upload error:', uploadRes.status, errText);
+    throw new Error(`Etsy image upload failed: ${uploadRes.status}`);
+  }
 }
