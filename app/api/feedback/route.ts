@@ -1,52 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
-import fs from 'fs';
-
-export type FeedbackPayload = {
-  rating: number;
-  message?: string;
-  route: string;
-  timestamp: string;
-  userAgent?: string;
-  allowContact?: boolean;
-};
-
-// In-memory store for MVP. Replace with database when scaling.
-const feedbackStore: FeedbackPayload[] = [];
-
-const FEEDBACK_FILE = path.join(process.cwd(), 'data', 'feedback.json');
-
-function ensureDataDir() {
-  const dir = path.dirname(FEEDBACK_FILE);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
-function loadFromFile(): FeedbackPayload[] {
-  try {
-    ensureDataDir();
-    if (fs.existsSync(FEEDBACK_FILE)) {
-      const raw = fs.readFileSync(FEEDBACK_FILE, 'utf-8');
-      const data = JSON.parse(raw);
-      return Array.isArray(data) ? data : [];
-    }
-  } catch {
-    // Ignore read errors; will use in-memory only
-  }
-  return [];
-}
-
-function appendToFile(payload: FeedbackPayload) {
-  try {
-    ensureDataDir();
-    const existing = loadFromFile();
-    existing.push(payload);
-    fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(existing, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[feedback] Failed to write to file:', err);
-  }
-}
+import type { FeedbackPayload } from '@/lib/feedbackStorage';
+import { appendFeedbackToFile } from '@/lib/feedbackStorage';
 
 export async function POST(request: NextRequest) {
   try {
@@ -70,9 +24,7 @@ export async function POST(request: NextRequest) {
     // MVP: log to console
     console.log('[feedback]', JSON.stringify(payload, null, 2));
 
-    // MVP: persist to in-memory + optional JSON file
-    feedbackStore.push(payload);
-    appendToFile(payload);
+    appendFeedbackToFile(payload);
 
     return NextResponse.json({ ok: true });
   } catch (e) {

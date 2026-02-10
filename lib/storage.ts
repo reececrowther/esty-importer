@@ -1,8 +1,8 @@
 /**
  * Storage abstraction layer
- * 
- * Currently uses filesystem for local development.
- * For SaaS scaling, this would be replaced with S3-compatible storage.
+ *
+ * - filesystem: local development (./uploads)
+ * - vercel_blob: production on Vercel (set BLOB_READ_WRITE_TOKEN)
  */
 
 import fs from 'fs/promises';
@@ -83,16 +83,66 @@ class FilesystemStorage implements StorageAdapter {
   }
 }
 
-// Future: S3Storage adapter would go here
-// class S3Storage implements StorageAdapter { ... }
+/** Vercel Blob adapter: use on Vercel so uploads persist (no filesystem). */
+class VercelBlobStorage implements StorageAdapter {
+  private basePath: string;
+
+  constructor() {
+    this.basePath = 'esty-importer';
+  }
+
+  async save(file: Buffer, filename: string, mimeType: string): Promise<string> {
+    const { put } = await import('@vercel/blob');
+    const fileId = randomUUID();
+    const ext = path.extname(filename) || this.getExtensionFromMimeType(mimeType);
+    const pathname = `${this.basePath}/${fileId}${ext}`;
+    const blob = await put(pathname, file, {
+      access: 'public',
+      contentType: mimeType,
+      addRandomSuffix: false,
+    });
+    return blob.url;
+  }
+
+  getUrl(filePath: string): string {
+    return filePath.startsWith('http') ? filePath : `/api/files/${filePath}`;
+  }
+
+  async delete(filePath: string): Promise<void> {
+    const { del } = await import('@vercel/blob');
+    await del(filePath);
+  }
+
+  async read(filePath: string): Promise<Buffer> {
+    const res = await fetch(filePath);
+    if (!res.ok) throw new Error(`Blob read failed: ${res.status}`);
+    const ab = await res.arrayBuffer();
+    return Buffer.from(ab);
+  }
+
+  private getExtensionFromMimeType(mimeType: string): string {
+    const mimeMap: Record<string, string> = {
+      'image/jpeg': '.jpg',
+      'image/png': '.png',
+      'image/gif': '.gif',
+      'image/webp': '.webp',
+      'image/vnd.adobe.photoshop': '.psd',
+    };
+    return mimeMap[mimeType] || '.bin';
+  }
+}
 
 let storageAdapter: StorageAdapter;
 
-if (STORAGE_TYPE === 'filesystem') {
+if (STORAGE_TYPE === 'vercel_blob') {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error('BLOB_READ_WRITE_TOKEN is required when STORAGE_TYPE=vercel_blob');
+  }
+  storageAdapter = new VercelBlobStorage();
+} else if (STORAGE_TYPE === 'filesystem') {
   storageAdapter = new FilesystemStorage(STORAGE_PATH);
 } else {
-  // For SaaS: initialize S3Storage or other cloud storage
-  throw new Error(`Storage type "${STORAGE_TYPE}" not implemented yet`);
+  throw new Error(`Storage type "${STORAGE_TYPE}" not implemented. Use filesystem or vercel_blob.`);
 }
 
 export const storage = storageAdapter;

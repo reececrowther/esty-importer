@@ -93,7 +93,15 @@ function NavIcon({ name }: { name: string }) {
   }
 }
 
-export default function DashboardSidebar({ tier = 'FREE' }: { tier?: Tier }) {
+function ShieldIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 shrink-0">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+export default function DashboardSidebar({ tier = 'FREE', isAdmin = false }: { tier?: Tier; isAdmin?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -143,6 +151,26 @@ export default function DashboardSidebar({ tier = 'FREE' }: { tier?: Tier }) {
           );
         })}
       </nav>
+
+      {/* Admin – only when isAdmin */}
+      {isAdmin && (
+        <nav className="p-3 border-t border-gray-200 dark:border-gray-700 space-y-0.5">
+          <p className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            Admin
+          </p>
+          <Link
+            href="/dashboard/admin"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              pathname === '/dashboard/admin'
+                ? 'bg-amber-600 text-white dark:bg-amber-500'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'
+            }`}
+          >
+            <ShieldIcon />
+            Admin
+          </Link>
+        </nav>
+      )}
 
       {/* Settings – bottom */}
       <nav className="p-3 border-t border-gray-200 dark:border-gray-700 space-y-0.5">
