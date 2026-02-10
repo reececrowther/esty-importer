@@ -17,9 +17,9 @@ function ensureCanvasInitialized() {
   if (canvasInitialized) return;
 
   try {
-    // node-canvas is optional (optionalDependencies) — not available on Vercel; use Photopea in-browser
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const canvasModule = require('canvas');
+    // node-canvas is optional (optionalDependencies) — not available on Vercel; use Photopea in-browser.
+    // webpackIgnore prevents the bundler from resolving/bundling canvas (avoids Vercel build failure).
+    const canvasModule = require(/* webpackIgnore: true */ 'canvas');
     const { createCanvas } = canvasModule;
     
     if (!createCanvas || typeof createCanvas !== 'function') {
