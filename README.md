@@ -35,14 +35,14 @@ A SaaS-style web app for creating mockups and generating Etsy-optimized listings
 2. Copy environment variables (required for auth and DB):
    ```bash
    cp .env.example .env
+   cp .env.local.example .env.local
    ```
-   `.env.example` includes `DATABASE_URL`, `NEXTAUTH_SECRET`, and `NEXTAUTH_URL` for local SaaS.
+   `.env` holds shared keys (API keys, `NEXTAUTH_SECRET`, etc.). `.env.local` holds **local-only** values (database URL, local URLs) so you never have to change code or swap config when switching between local and the live server. See **ENV.md** for details.
 
-3. Configure `.env`:
-   - **Database** (required for auth): `DATABASE_URL="file:./dev.db"` (SQLite; already in `.env.example`).
-   - **Auth**: Set `NEXTAUTH_SECRET` (e.g. `openssl rand -base64 32`) and `NEXTAUTH_URL=http://localhost:3000`.
-   - **App**: `NEXT_PUBLIC_APP_URL=http://localhost:3000`.
-   - **AI listings**: Use **OpenRouter** (recommended) — set `OPENROUTER_API_KEY` and optionally `OPENROUTER_MODEL` (e.g. `openai/gpt-4`, `anthropic/claude-3.5-sonnet`). Or use direct **OpenAI**: `OPENAI_API_KEY=your_key_here`.
+3. Configure `.env` and `.env.local`:
+   - **`.env`**: Set `NEXTAUTH_SECRET` (e.g. `openssl rand -base64 32`), AI keys (`OPENROUTER_API_KEY` or `OPENAI_API_KEY`), and any other shared keys. Do not put production `DATABASE_URL` here if you use `.env.local` for local.
+   - **`.env.local`**: Set `DATABASE_URL` to **`"file:./dev.db"`** for local SQLite, or to a local/dev Postgres URL. Set `NEXTAUTH_URL=http://localhost:3000` and `NEXT_PUBLIC_APP_URL=http://localhost:3000`.
+   - **AI listings**: Use **OpenRouter** (recommended) — set `OPENROUTER_API_KEY` and optionally `OPENROUTER_MODEL`. Or use **OpenAI**: `OPENAI_API_KEY=your_key_here`.
    - **Etsy** (optional): Add Etsy API keys if you use shop connection (see `ETSY_SETUP.md`).
 
 4. Create the database and seed a demo user (optional):
@@ -58,6 +58,8 @@ A SaaS-style web app for creating mockups and generating Etsy-optimized listings
    ```
 
 6. Open [http://localhost:3000](http://localhost:3000). Use the homepage to learn about the product; **Log in** or **Sign up** to access the **Dashboard** (mockup generator and listing tools).
+
+**Running locally and on the live server:** Use `.env.local` for local database and URLs; set the same variables in your host (e.g. Vercel) for production. You never need to change code or swap `.env` lines. See **ENV.md** for details.
 
 ## Project Structure
 

@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "node scripts/prisma-pick-schema.js generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate",
-    "db:push": "prisma db push",
+    "postinstall": "node scripts/prisma-pick-schema.js generate",
+    "db:generate": "node scripts/prisma-pick-schema.js generate",
+    "db:push": "node scripts/prisma-pick-schema.js push",
     "db:seed": "npx ts-node -P prisma/tsconfig.json prisma/seed.ts",
     "db:upgrade-all-access": "npx ts-node -P prisma/tsconfig.json prisma/upgrade-all-access.ts"
   },

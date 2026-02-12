@@ -9,7 +9,13 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const files = formData.getAll('files') as File[];
+    // Support both 'files' (multiple) and 'file' (single) for compatibility with Photopea export and other clients
+    let fileList = formData.getAll('files') as File[];
+    if (!fileList.length) {
+      const single = formData.get('file');
+      if (single instanceof File) fileList = [single];
+    }
+    const files = fileList;
 
     if (!files || files.length === 0) {
       return NextResponse.json(

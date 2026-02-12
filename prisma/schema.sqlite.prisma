@@ -1,0 +1,32 @@
+// SQLite schema for local development (DATABASE_URL="file:./dev.db")
+// Production uses schema.postgres.prisma. The pick script chooses based on DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Tier {
+  FREE
+  PLUS
+}
+
+model User {
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  name                    String?
+  passwordHash            String
+  tier                    Tier      @default(FREE)
+  stripeCustomerId        String?   // Stripe Customer for billing portal
+  stripeSubscriptionId    String?   // Active Plus subscription (for webhook downgrade)
+  usagePeriodMonth        String?   // e.g. "2025-02" for monthly reset
+  mockupsUsedInPeriod     Int       @default(0)
+  etsyUploadsUsedInPeriod Int       @default(0)
+  listingGensUsedInPeriod Int       @default(0)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+}

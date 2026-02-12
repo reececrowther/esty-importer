@@ -14,6 +14,15 @@ function safeFileName(name: string): string {
   return name.replace(/\.psd$/i, '').replace(/[^\w.-]/g, '_') || 'mockup';
 }
 
+/** Build URL for displaying/downloading an exported mockup. Prefer path-based so it works when origin differs (e.g. after refresh). */
+function getDisplayUrl(mockup: MockupResult): string {
+  const path = mockup.exportedImagePath;
+  if (path && !path.startsWith('http') && !path.startsWith('/')) {
+    return `/api/files/${encodeURIComponent(path)}`;
+  }
+  return mockup.exportedImageUrl || (path ? `/api/files/${encodeURIComponent(path)}` : '');
+}
+
 export default function MockupGallery({ mockups, onReorder }: MockupGalleryProps) {
   const [selectedMockup, setSelectedMockup] = useState<MockupResult | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -46,15 +55,16 @@ export default function MockupGallery({ mockups, onReorder }: MockupGalleryProps
 
   const handleDownload = async (mockup: MockupResult) => {
     try {
-      const response = await fetch(mockup.exportedImageUrl);
+      const imageUrl = getDisplayUrl(mockup);
+      const response = await fetch(imageUrl);
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = blobUrl;
       a.download = `${safeFileName(mockup.mockupName)}.jpg`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
       document.body.removeChild(a);
     } catch (error) {
       console.error('Download error:', error);
@@ -78,7 +88,7 @@ export default function MockupGallery({ mockups, onReorder }: MockupGalleryProps
           name = `${base}_${n}.jpg`;
         }
         usedNames.add(name);
-        const response = await fetch(mockup.exportedImageUrl);
+        const response = await fetch(getDisplayUrl(mockup));
         const blob = await response.blob();
         zip.file(name, blob);
       }
@@ -137,7 +147,7 @@ export default function MockupGallery({ mockups, onReorder }: MockupGalleryProps
               </div>
             )}
             <img
-              src={mockup.exportedImageUrl}
+              src={getDisplayUrl(mockup)}
               alt={mockup.mockupName}
               className="w-full h-48 object-cover pointer-events-none"
               draggable={false}
@@ -177,7 +187,7 @@ export default function MockupGallery({ mockups, onReorder }: MockupGalleryProps
               </button>
             </div>
             <img
-              src={selectedMockup.exportedImageUrl}
+              src={getDisplayUrl(selectedMockup)}
               alt={selectedMockup.mockupName}
               className="w-full h-auto max-h-[70vh] object-contain"
             />

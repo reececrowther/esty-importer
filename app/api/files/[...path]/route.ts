@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { storage } from '@/lib/storage';
 import path from 'path';
+import fs from 'fs/promises';
+import { isPackPath, getPackRelativePath } from '@/lib/mockupPacks';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,7 +22,15 @@ export async function GET(
       );
     }
 
-    const fileData = await storage.read(filePath);
+    let fileData: Buffer;
+    if (isPackPath(filePath)) {
+      // Pack mockups live in public/mockup-packs/ (e.g. pack:vertical-modern-frame/vertical-1.psd)
+      const relativePath = getPackRelativePath(filePath);
+      const fullPath = path.join(process.cwd(), 'public', 'mockup-packs', relativePath);
+      fileData = await fs.readFile(fullPath);
+    } else {
+      fileData = await storage.read(filePath);
+    }
     
     // Determine content type from extension
     const ext = path.extname(filePath).toLowerCase();
@@ -61,6 +71,14 @@ export async function DELETE(
     if (filePath.includes('..')) {
       return NextResponse.json(
         { error: 'Invalid file path' },
+        { status: 400 }
+      );
+    }
+
+    // Pack files are read-only (in public/mockup-packs), not deletable via API
+    if (isPackPath(filePath)) {
+      return NextResponse.json(
+        { error: 'Cannot delete mockup pack files' },
         { status: 400 }
       );
     }

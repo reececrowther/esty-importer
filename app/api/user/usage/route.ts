@@ -4,6 +4,8 @@ import { authOptions } from '@/lib/auth';
 import { getUserWithUsage } from '@/lib/tiers';
 import { getLimitsForTier, TIER_LIMITS } from '@/lib/tierConstants';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
